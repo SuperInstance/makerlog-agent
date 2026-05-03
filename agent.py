@@ -2,18 +2,38 @@
 """
 makerlog-agent — AI-powered maker logging for project tracking and build streaks
 Log commits, deploys, and milestones. Integrates with the PLATO fleet for maker intelligence.
+
+Now uses domain-agent-base for PLATO integration, health checks, and reporting.
 """
 
 import json, time, hashlib
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional
 from dataclasses import dataclass, field
 from datetime import datetime
+
+try:
+    from domain_agent_base import DomainAgent
+except ImportError:
+    class DomainAgent:
+        domain = "base"
+        plato_url = "http://147.224.38.131:8847"
+        def __init__(self):
+            self.tiles_submitted = []
+            self.errors = []
+            self.start_time = time.time()
+        def submit_tile(self, question, answer, room=None):
+            self.tiles_submitted.append({"q": question, "a": answer})
+            return True
+        def get_stats(self):
+            return {"domain": self.domain, "tiles": len(self.tiles_submitted)}
+        def run(self):
+            raise NotImplementedError
 
 @dataclass
 class Milestone:
     id: str
     project: str
-    action: str  # commit, deploy, build, test, design
+    action: str
     description: str
     timestamp: float
     tags: List[str] = field(default_factory=list)
@@ -28,10 +48,14 @@ class Project:
     last_active: Optional[float] = None
     status: str = "active"
 
-class MakerLogAgent:
-    def __init__(self, agent_name: str = "makerlog-agent", plato_url: str = "http://147.224.38.131:8847"):
-        self.name = agent_name
-        self.plato_url = plato_url.rstrip("/")
+class MakerLogAgent(DomainAgent):
+    """Maker logging agent — now with DomainAgent base class."""
+    
+    domain = "maker"
+    version = "0.2.0"
+    
+    def __init__(self):
+        super().__init__()
         self.projects: Dict[str, Project] = {}
         self.all_milestones: List[Milestone] = []
     
@@ -63,8 +87,8 @@ class MakerLogAgent:
         self.projects[project].last_active = time.time()
         self._update_streak(project)
         
-        # Submit to PLATO
-        self._submit_tile(
+        # Submit to PLATO via base class
+        self.submit_tile(
             question=f"What happened in project {project}?",
             answer=f"{action}: {description} (streak: {self.projects[project].streak_days} days)"
         )
@@ -76,7 +100,6 @@ class MakerLogAgent:
         if not proj.milestones:
             return
         
-        # Get unique days with activity
         days = set()
         for m in proj.milestones:
             days.add(int(m.timestamp // 86400))
@@ -134,46 +157,35 @@ class MakerLogAgent:
             "fleet_avg_streak": round(sum(p.streak_days for p in self.projects.values()) / len(self.projects), 1) if self.projects else 0
         }
     
-    def _submit_tile(self, question: str, answer: str):
-        payload = json.dumps({
-            "question": question,
-            "answer": answer,
-            "agent": self.name,
-            "room": "makerlog"
-        }).encode()
-        try:
-            import urllib.request
-            req = urllib.request.Request(f"{self.plato_url}/submit", data=payload,
-                                         headers={"Content-Type": "application/json"})
-            with urllib.request.urlopen(req, timeout=5) as r:
-                pass
-        except Exception:
-            pass
+    def run(self):
+        """Main agent loop — log demo milestones and submit insights."""
+        print(f"MakerLogAgent v{self.version} starting...")
+        
+        # Project 1: Building a boat
+        self.log_milestone("boat-v1", "design", "Drafted hull plans for 12ft skiff", ["design", "boat"], 120)
+        self.log_milestone("boat-v1", "build", "Cut plywood panels for hull", ["build", "wood"], 240)
+        self.log_milestone("boat-v1", "commit", "Pushed hull CAD files to repo", ["cad", "git"], 30)
+        self.log_milestone("boat-v1", "test", "Dry-fit panels, adjustments needed", ["test"], 60)
+        
+        # Project 2: PLATO agent
+        self.log_milestone("plato-agent", "commit", "Added tile search functionality", ["code", "plato"], 90)
+        self.log_milestone("plato-agent", "deploy", "Deployed to Cloudflare Workers", ["deploy", "edge"], 15)
+        self.log_milestone("plato-agent", "design", "Architecture diagram for v2", ["design"], 45)
+        
+        # Submit fleet intelligence
+        intel = self.get_fleet_intelligence()
+        self.submit_tile(
+            "What is the fleet maker intelligence?",
+            json.dumps(intel, indent=2, default=str)
+        )
+        
+        print(f"Run complete. {len(self.projects)} projects, {len(self.all_milestones)} milestones, {len(self.tiles_submitted)} tiles")
 
-def demo():
+def main():
     agent = MakerLogAgent()
-    
-    # Project 1: Building a boat
-    agent.log_milestone("boat-v1", "design", "Drafted hull plans for 12ft skiff", ["design", "boat"], 120)
-    agent.log_milestone("boat-v1", "build", "Cut plywood panels for hull", ["build", "wood"], 240)
-    agent.log_milestone("boat-v1", "commit", "Pushed hull CAD files to repo", ["cad", "git"], 30)
-    agent.log_milestone("boat-v1", "test", "Dry-fit panels, adjustments needed", ["test"], 60)
-    
-    # Project 2: PLATO agent
-    agent.log_milestone("plato-agent", "commit", "Added tile search functionality", ["code", "plato"], 90)
-    agent.log_milestone("plato-agent", "deploy", "Deployed to Cloudflare Workers", ["deploy", "edge"], 15)
-    agent.log_milestone("plato-agent", "design", "Architecture diagram for v2", ["design"], 45)
-    
-    print("=== Project: boat-v1 ===")
-    print(agent.get_project_summary("boat-v1"))
-    
-    print("\n=== Fleet Intelligence ===")
-    intel = agent.get_fleet_intelligence()
-    print(f"Active projects: {intel['active_projects']}")
-    print(f"Total milestones: {intel['total_milestones']}")
-    print(f"Total hours: {intel['total_hours']}")
-    print(f"Action distribution: {intel['action_distribution']}")
-    print(f"Top projects: {intel['top_projects']}")
+    agent.run()
+    print(f"\nStats: {json.dumps(agent.get_stats(), indent=2)}")
+    print(f"\nHealth: {json.dumps(agent.health_check(), indent=2)}")
 
 if __name__ == "__main__":
-    demo()
+    main()
