@@ -128,3 +128,8 @@ pytest tests/
 ## License
 
 MIT
+
+## Related
+
+- [makerlog.ai](https://makerlog.ai) — Live site
+- [makerlog-ai-pages](https://github.com/SuperInstance/makerlog-ai-pages) — GitHub Pages source
