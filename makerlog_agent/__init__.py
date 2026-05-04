@@ -1,17 +1,14 @@
-"""
-makerlog_agent — Agent framework for makerlog.ai
+"""MakerLog Agent — maker project tracking, tools, build logs."""
 
-Project tracking, tools inventory, and build logs for makerspaces
-and hardware hackers. Integrates with the PLATO memory layer.
-"""
-
+from fleet_agent import BaseAgent
+from fleet_agent.fleet_math import EmergenceDetector
 from dataclasses import dataclass, field
 from datetime import datetime, date
 from enum import Enum
 from typing import Optional
 import json
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __all__ = [
     "Project",
     "ProjectStatus",
@@ -259,25 +256,28 @@ class Project:
         return cls(**data)
 
 
-class MakerLogAgent:
-    """
-    Agent for tracking maker projects, tools, and build logs.
+class MakerLogAgent(BaseAgent):
+    """Agent for tracking maker projects, tools, and build logs."""
 
-    Manages a workshop inventory, project timelines, and build
-    documentation. Integrates with PLATO for persistent memory.
+    MAKERLOG_ROOM = "makerlog-ai"
 
-    Example:
-        agent = MakerLogAgent()
-        agent.register_tool("Soldering Iron", ToolCategory.Electronic)
-        project = agent.create_project("LED Cube", budget=50.0)
-        agent.add_build_log("LED Cube", "Soldered LED matrix")
-        inventory = agent.get_tools_needing_maintenance()
-    """
-
-    def __init__(self, Plato_URL: str = "http://localhost:8847"):
-        self.plato_url = Plato_URL
+    def __init__(self, vessel: str = "makerlog", domain: str = MAKERLOG_ROOM, plato_url: str = "http://localhost:8847"):
+        super().__init__(vessel=vessel, domain=domain, plato_url=plato_url)
+        self.room = domain
         self.projects: list[Project] = []
         self.tools: list[Tool] = []
+
+    def detect_emergence(self, events: list[str]) -> dict:
+        """Detect emergence patterns in maker activity using H1 cohomology."""
+        from fleet_agent.fleet_math import EmergenceDetector
+        detector = EmergenceDetector()
+        edges = [(events[i], events[i+1]) for i in range(len(events)-1)]
+        detector.update(events, edges)
+        return {
+            "emergence_detected": detector.emergence_detected,
+            "h1_cohomology": detector.h1,
+            "confidence": detector.confidence,
+        }
 
     def register_tool(
         self,
